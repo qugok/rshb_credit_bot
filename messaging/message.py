@@ -17,9 +17,12 @@ class Message:
         if "reply_markup" not in options and clear:
             options["reply_markup"] = ReplyKeyboardRemove()
 
-        self.message_type = message_type
+        self.__message_type = message_type
         self.__texts = texts
         self.__options = options
+
+    def require_response(self):
+        return self.__message_type == MessageType.require_response
 
     def send(self, bot: telegram.Bot, chat_id):
         self.__prepare()

@@ -24,8 +24,11 @@ class JsonDatabase:
         self.__fill_reply_queue_from_bd(self.reply_to_approve_queue)
 
     def get_reply(self, reply_address: OfferReply.Address):
-        reply_data = self.__data[str(reply_address.chat_id)][reply_address.user_reply_ind]
-        return OfferReply.from_bd_row(**reply_data, row_ind=reply_address.user_reply_ind)
+        try:
+            reply_data = self.__data[str(reply_address.chat_id)][reply_address.user_reply_ind]
+            return OfferReply.from_bd_row(**reply_data, row_ind=reply_address.user_reply_ind)
+        except:
+            return None
 
     def get_replies(self, chat_id):
         if str(chat_id) not in self.__data:
@@ -33,10 +36,10 @@ class JsonDatabase:
         return self.__data[str(chat_id)]
 
     def write_reply(self, reply: OfferReply):
-        if reply.user_reply_ind is None:
-            reply.user_reply_ind = self.__add(reply.chat_id, reply.status, reply.credit_ind, reply.data)
+        if reply.__user_reply_ind is None:
+            reply.__user_reply_ind = self.__add(reply.__chat_id, reply.__status, reply.__credit_ind, reply.__data)
         else:
-            self.__update(reply.chat_id, reply.status, reply.credit_ind, reply.user_reply_ind, reply.data)
+            self.__update(reply.__chat_id, reply.__status, reply.__credit_ind, reply.__user_reply_ind, reply.__data)
 
     def __update(self, chat_id, status: ReplyStatus, credit_ind: int, credit_number: int, data):
         self.__data[str(chat_id)][credit_number] = \
@@ -63,12 +66,12 @@ class JsonDatabase:
     def __clear_data_from_deleted(self):
         new_data = collections.defaultdict(list)
         for chat_id, replies in self.__data.items():
-            new_data[chat_id] = [reply_data for reply_data in replies if reply_data["status"] != ReplyStatus.Deleted]
+            new_data[chat_id] = [reply_data for reply_data in replies if reply_data["status"] != ReplyStatus.Removed]
         self.__data = new_data
 
     def filter_reply_queue(self):
         self.reply_to_approve_queue = [addr for addr in self.reply_to_approve_queue if
-                                       not self.get_reply(addr).is_deleted()]
+                                       not (self.get_reply(addr).is_deleted() or self.get_reply(addr).is_cancelled())]
 
     def get_approved_replies(self):
         ret_replies = []
@@ -84,6 +87,15 @@ class JsonDatabase:
         for chat_id, replies in self.__data.items():
             for ind, reply_data in enumerate(replies):
                 if reply_data["status"] == ReplyStatus.Rejected:
+                    cr = OfferReply.from_bd_row(**reply_data, row_ind=ind)
+                    ret_replies.append(cr.get_address())
+        return ret_replies
+
+    def get_cancelled_replies(self):
+        ret_replies = []
+        for chat_id, replies in self.__data.items():
+            for ind, reply_data in enumerate(replies):
+                if reply_data["status"] == ReplyStatus.Cancelled:
                     cr = OfferReply.from_bd_row(**reply_data, row_ind=ind)
                     ret_replies.append(cr.get_address())
         return ret_replies

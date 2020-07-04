@@ -7,7 +7,8 @@ class ReplyStatus(int, Enum):
     Approved = 0
     Rejected = 1
     Pending = 2
-    Deleted = 3
+    Cancelled = 3
+    Removed = 4
 
     def readable(self):
         if self == ReplyStatus.Approved:
@@ -16,7 +17,9 @@ class ReplyStatus(int, Enum):
             return "Отклонено"
         if self == ReplyStatus.Pending:
             return "На рассмотрении"
-        if self == ReplyStatus.Deleted:
+        if self == ReplyStatus.Cancelled:
+            return "Отменена"
+        if self == ReplyStatus.Removed:
             return "Удалена"
 
 
@@ -45,44 +48,50 @@ class OfferReply:
         :param status:
         :param user_reply_ind: номер заявки из списка заявок клиента, если None, то новая
         """
-        self.user_reply_ind = user_reply_ind
-        self.data = data
-        self.credit_ind = credit_ind
-        self.status = ReplyStatus(status)
-        self.chat_id = chat_id
+        self.__user_reply_ind = user_reply_ind
+        self.__data = data
+        self.__credit_ind = credit_ind
+        self.__status = ReplyStatus(status)
+        self.__chat_id = chat_id
 
     def approve(self):
-        self.status = ReplyStatus.Approved
+        self.__status = ReplyStatus.Approved
 
     def reject(self):
-        self.status = ReplyStatus.Rejected
+        self.__status = ReplyStatus.Rejected
 
-    def delete(self):
-        self.status = ReplyStatus.Deleted
+    def cancel(self):
+        self.__status = ReplyStatus.Cancelled
 
-    def is_deleted(self):
-        return self.status == ReplyStatus.Deleted
+    def remove(self):
+        self.__status = ReplyStatus.Removed
+
+    def is_removed(self):
+        return self.__status == ReplyStatus.Removed
+
+    def is_cancelled(self):
+        return self.__status == ReplyStatus.Cancelled
 
     def __str__(self):
-        credit = offer_list[self.credit_ind].constructor()()
-        credit.fill_fields(**self.data)
+        credit = offer_list[self.__credit_ind].constructor()()
+        credit.fill_fields(**self.__data)
         return str(credit)
 
     def credit_description(self):
-        return offer_list[self.credit_ind].description
+        return offer_list[self.__credit_ind].description
 
     def admin_description(self):
-        credit = offer_list[self.credit_ind].constructor()()
-        credit.fill_fields(**self.data)
+        credit = offer_list[self.__credit_ind].constructor()()
+        credit.fill_fields(**self.__data)
         return credit.admin_description()
 
     def get_reply(self, is_edited=False, admin=False):
-        credit = offer_list[self.credit_ind].constructor()()
-        credit.fill_fields(**self.data)
+        credit = offer_list[self.__credit_ind].constructor()()
+        credit.fill_fields(**self.__data)
         if admin:
-            return ("Заявка:\n") + str(credit) + "\nСтатус:" + self.status.readable()
+            return ("Заявка:\n") + str(credit) + "\nСтатус:" + self.__status.readable()
         return ("Здравствуйте, по вашей заявке:\n" if is_edited else "Ваша заявка:\n") + str(credit) + (
-            "\nНовый статус: " if is_edited else "\nСтатус: ") + self.status.readable()
+            "\nНовый статус: " if is_edited else "\nСтатус: ") + self.__status.readable()
 
     def get_address(self):
-        return OfferReply.Address(self.chat_id, self.user_reply_ind)
+        return OfferReply.Address(self.__chat_id, self.__user_reply_ind)

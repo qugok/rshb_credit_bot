@@ -5,3 +5,7 @@ from offers.named_credit import NamedCredit
 from offers.simple_credit import SimpleCredit
 
 offer_list = [SimpleCredit, NamedCredit, ExpandedCredit, BiggestCredit, BankCard]
+
+"""
+Новые добавлять можно только после старых, чтобы не поехала нумерация с уже сораненных данных
+"""

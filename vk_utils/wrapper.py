@@ -4,7 +4,7 @@ import vk
 class VKWrapper:
     def __init__(self, vk_token, version="5.89"):
         session = vk.Session(access_token=vk_token)
-        self.vk_api = vk.API(session, v=version)
+        self.__vk_api = vk.API(session, v=version)
 
     def get_id_by_user(self, user: str):
         """
@@ -12,7 +12,7 @@ class VKWrapper:
         :return:id
         """
         screen_name = user.lower().split("/")[-1]
-        result = self.vk_api.utils.resolveScreenName(screen_name=screen_name)
+        result = self.__vk_api.utils.resolveScreenName(screen_name=screen_name)
         if result is None or result["type"] != "user":
             return None
         return result["object_id"]
@@ -23,8 +23,8 @@ class VKWrapper:
 
     def get_user_info_by_id(self, user_id, fields=None):
         if fields is None:
-            return self.vk_api.users.get(user_ids=user_id)[0]
-        user_info = self.vk_api.users.get(user_id=user_id, fields=fields, lang="ru")[0]
+            return self.__vk_api.users.get(user_ids=user_id)[0]
+        user_info = self.__vk_api.users.get(user_id=user_id, fields=fields, lang="ru")[0]
 
         if "career" in fields and "career" in user_info:
             if "group_id" not in user_info["career"][-1]:
@@ -37,4 +37,4 @@ class VKWrapper:
         return user_info
 
     def get_group_by_id(self, group_id):
-        return self.vk_api.groups.getById(group_id=group_id)[0]
+        return self.__vk_api.groups.getById(group_id=group_id)[0]

@@ -1,214 +1,352 @@
-from data.globals import bd
 from data.offer_reply import OfferReply
-from messaging.globals import notifier
-from messaging.message import Message
 import telegram
 from telegram.ext import Updater
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 
-def admin_menu(update, context):
-    query: telegram.CallbackQuery = update.callback_query
-    query.answer()
+class AdminCallback:
 
-    keyboard = [
-        [InlineKeyboardButton("Ожидают рассмотрения",
-                              callback_data=f'admin_check_replies')],
-        [InlineKeyboardButton("Одобренные",
-                              callback_data=f'admin_approved_replies')],
-        [InlineKeyboardButton("Отклонённые",
-                              callback_data=f'admin_rejected_replies')],
-    ]
-    text = "Здравствуйте, администратор"
+    def __init__(self, notifier, bd):
+        self.bd = bd
+        self.notifier = notifier
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    query.edit_message_text(text=text)
-    query.edit_message_reply_markup(reply_markup=reply_markup)
+    def menu(self, update, context):
+        query: telegram.CallbackQuery = update.callback_query
+        query.answer()
 
+        keyboard = [
+            [InlineKeyboardButton("Ожидают рассмотрения",
+                                  callback_data=f'admin_check_replies')],
+            [InlineKeyboardButton("Одобренные",
+                                  callback_data=f'admin_approved_replies')],
+            [InlineKeyboardButton("Отклонённые",
+                                  callback_data=f'admin_rejected_replies')],
+            [InlineKeyboardButton("Отменённые",
+                                  callback_data=f'admin_cancelled_replies')],
+        ]
+        text = "Здравствуйте, администратор"
 
-def admin_check_replies(update, context):
-    query: telegram.CallbackQuery = update.callback_query
-    query.answer()
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        query.edit_message_text(text=text)
+        query.edit_message_reply_markup(reply_markup=reply_markup)
 
-    keyboard = []
+    def check_replies(self, update, context):
+        query: telegram.CallbackQuery = update.callback_query
+        query.answer()
 
-    bd.filter_reply_queue()
-    if len(bd.reply_to_approve_queue) != 0:
-        for ind, or_address in enumerate(bd.reply_to_approve_queue):
-            offer_reply = bd.get_reply(or_address)
-            if offer_reply.is_deleted():
-                continue
-            keyboard.append([InlineKeyboardButton(offer_reply.admin_description(),
-                                                  callback_data=f'admin_check_replies/{ind}')])
-        text = "Доступные заявки"
-    else:
-        text = "Очередь пуста"
-
-    keyboard.append([InlineKeyboardButton("Обновить список",
-                                          callback_data=f'admin_check_replies')])
-    keyboard.append([InlineKeyboardButton("<<Назад",
-                                          callback_data=f'admin_menu')])
-
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    query.edit_message_text(text=text)
-    query.edit_message_reply_markup(reply_markup=reply_markup)
-
-
-def admin_view_reply(update, context):
-    query: telegram.CallbackQuery = update.callback_query
-    query.answer()
-    reply_ind = int(query.data.split("/")[-1])
-    offer_reply = bd.get_reply(bd.reply_to_approve_queue[reply_ind])
-    if offer_reply.is_deleted():
-        text = "Заявка была удалена пользователем"
         keyboard = []
-    else:
-        keyboard = [[InlineKeyboardButton("Одобрить",
-                                          callback_data=f'admin_check_replies/{reply_ind}/approve'),
-                     InlineKeyboardButton("Отклонить",
-                                          callback_data=f'admin_check_replies/{reply_ind}/reject')]]
-        text = "Заявка: \n" + str(offer_reply)
-    keyboard.append([InlineKeyboardButton("<<Назад",
-                                          callback_data=f'admin_check_replies')])
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    query.edit_message_text(text=text)
-    query.edit_message_reply_markup(reply_markup=reply_markup)
+        self.bd.filter_reply_queue()
+        if len(self.bd.reply_to_approve_queue) != 0:
+            for ind, or_address in enumerate(self.bd.reply_to_approve_queue):
+                offer_reply = self.bd.get_reply(or_address)
+                if offer_reply.is_removed():
+                    continue
+                keyboard.append([InlineKeyboardButton(offer_reply.admin_description(),
+                                                      callback_data=f'admin_check_replies/{ind}')])
+            text = "Доступные заявки"
+        else:
+            text = "Очередь пуста"
 
+        keyboard.append([InlineKeyboardButton("Обновить список",
+                                              callback_data=f'admin_check_replies')])
+        keyboard.append([InlineKeyboardButton("<<Назад",
+                                              callback_data=f'admin_menu')])
 
-def admin_approve_reply(update, context: telegram.ext.CallbackContext):
-    query: telegram.CallbackQuery = update.callback_query
-    query.answer()
-    reply_ind = int(query.data.split("/")[1])
-    offer_reply: OfferReply = bd.get_reply(bd.reply_to_approve_queue.pop(reply_ind))
-    if offer_reply.is_deleted():
-        text = "Заявка была удалена пользователем"
-    else:
-        offer_reply.approve()
-        bd.flush()
-        bd.write_reply(offer_reply)
-        notifier.send_edited_reply(offer_reply)
-        text = "Одобрено"
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        query.edit_message_text(text=text)
+        query.edit_message_reply_markup(reply_markup=reply_markup)
 
-    keyboard = [[InlineKeyboardButton("<<Назад", callback_data=f'admin_check_replies')]]
+    def view_pending_reply(self, update, context):
+        query: telegram.CallbackQuery = update.callback_query
+        query.answer()
+        reply_ind = int(query.data.split("/")[-1])
+        offer_reply: OfferReply = self.bd.get_reply(self.bd.reply_to_approve_queue[reply_ind])
+        text = ""
+        if offer_reply.is_cancelled():
+            text = "Заявка была отменена пользователем\n"
+            keyboard = []
+        elif offer_reply.is_removed():
+            text = "Заявка была удалена"
+            keyboard = []
+        else:
+            keyboard = [[InlineKeyboardButton("Одобрить",
+                                              callback_data=f'admin_check_replies/{reply_ind}/approve'),
+                         InlineKeyboardButton("Отклонить",
+                                              callback_data=f'admin_check_replies/{reply_ind}/reject')]]
+        text += "Заявка: \n" + str(offer_reply)
+        keyboard.append([InlineKeyboardButton("<<Назад",
+                                              callback_data=f'admin_check_replies')])
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    query.edit_message_text(text=text)
-    query.edit_message_reply_markup(reply_markup=reply_markup)
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        query.edit_message_text(text=text)
+        query.edit_message_reply_markup(reply_markup=reply_markup)
 
+    def approve_reply(self, update, context: telegram.ext.CallbackContext):
+        query: telegram.CallbackQuery = update.callback_query
+        query.answer()
+        reply_ind = int(query.data.split("/")[1])
+        if reply_ind >= len(self.bd.reply_to_approve_queue):
+            text = "Неверный индекс"
+        else:
+            offer_reply: OfferReply = self.bd.get_reply(self.bd.reply_to_approve_queue.pop(reply_ind))
 
-def admin_reject_reply(update, context: telegram.ext.CallbackContext):
-    query: telegram.CallbackQuery = update.callback_query
-    query.answer()
-    reply_ind = int(query.data.split("/")[1])
-    offer_reply: OfferReply = bd.get_reply(bd.reply_to_approve_queue.pop(reply_ind))
-    if offer_reply.is_deleted():
-        text = "Заявка была удалена пользователем"
-    else:
-        offer_reply.reject()
-        bd.write_reply(offer_reply)
-        bd.flush()
-        notifier.send_edited_reply(offer_reply)
-        text = "Отклонено"
+            if offer_reply.is_cancelled():
+                text = "Заявка была отменена пользователем\n"
+            elif offer_reply.is_removed():
+                text = "Заявка была удалена"
+            else:
+                offer_reply.approve()
+                self.bd.write_reply(offer_reply)
+                self.bd.flush()
+                self.notifier.send_edited_reply(offer_reply)
+                text = "Одобрено"
 
-    keyboard = [[InlineKeyboardButton("<<Назад", callback_data=f'admin_check_replies')]]
+        keyboard = [[InlineKeyboardButton("<<Назад", callback_data=f'admin_check_replies')]]
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    query.edit_message_text(text=text)
-    query.edit_message_reply_markup(reply_markup=reply_markup)
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        query.edit_message_text(text=text)
+        query.edit_message_reply_markup(reply_markup=reply_markup)
 
+    def reject_reply(self, update, context: telegram.ext.CallbackContext):
+        query: telegram.CallbackQuery = update.callback_query
+        query.answer()
+        reply_ind = int(query.data.split("/")[1])
 
-def admin_approved_replies(update, context):
-    query: telegram.CallbackQuery = update.callback_query
-    query.answer()
+        if reply_ind >= len(self.bd.reply_to_approve_queue):
+            text = "Неверный индекс"
+        else:
+            offer_reply: OfferReply = self.bd.get_reply(self.bd.reply_to_approve_queue.pop(reply_ind))
+            if offer_reply.is_cancelled():
+                text = "Заявка была отменена пользователем\n"
+            elif offer_reply.is_removed():
+                text = "Заявка была удалена\n"
+            else:
+                offer_reply.reject()
+                self.bd.write_reply(offer_reply)
+                self.bd.flush()
+                self.notifier.send_edited_reply(offer_reply)
+                text = "Отклонено"
 
-    keyboard = []
+        keyboard = [[InlineKeyboardButton("<<Назад", callback_data=f'admin_check_replies')]]
 
-    replies = bd.get_approved_replies()
-    if len(replies) != 0:
-        for ind, or_address in enumerate(replies):
-            offer_reply = bd.get_reply(or_address)
-            if offer_reply.is_deleted():
-                continue
-            keyboard.append([InlineKeyboardButton(offer_reply.admin_description(),
-                                                  callback_data=f'admin_approved_replies/{or_address.chat_id}/{or_address.user_reply_ind}/view')])
-        text = "Одобренные заявки"
-    else:
-        text = "Список пуст"
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        query.edit_message_text(text=text)
+        query.edit_message_reply_markup(reply_markup=reply_markup)
 
-    keyboard.append([InlineKeyboardButton("Обновить список",
-                                          callback_data=f'admin_approved_replies')])
-    keyboard.append([InlineKeyboardButton("<<Назад",
-                                          callback_data=f'admin_menu')])
+    def approved_replies(self, update, context):
+        query: telegram.CallbackQuery = update.callback_query
+        query.answer()
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    query.edit_message_text(text=text)
-    query.edit_message_reply_markup(reply_markup=reply_markup)
+        keyboard = []
 
+        replies = self.bd.get_approved_replies()
+        if len(replies) != 0:
+            for ind, or_address in enumerate(replies):
+                offer_reply = self.bd.get_reply(or_address)
+                if offer_reply.is_removed():
+                    continue
+                keyboard.append([InlineKeyboardButton(offer_reply.admin_description(),
+                                                      callback_data=f'admin_approved_replies/{or_address.chat_id}/{or_address.user_reply_ind}/view')])
+            text = "Одобренные заявки"
+        else:
+            text = "Список пуст"
 
-def admin_view_approved_reply(update, context):
-    query: telegram.CallbackQuery = update.callback_query
-    query.answer()
-    chat_id, reply_ind = tuple(map(int, query.data.split("/")[1:3]))
-    keyboard = []
+        keyboard.append([InlineKeyboardButton("Обновить список",
+                                              callback_data=f'admin_approved_replies')])
+        keyboard.append([InlineKeyboardButton("<<Назад",
+                                              callback_data=f'admin_menu')])
 
-    offer_reply = bd.get_reply(OfferReply.Address(chat_id, reply_ind))
-    if offer_reply.is_deleted():
-        text = "Заявка была удалена пользователем"
-    else:
-        text = offer_reply.get_reply(admin=True)
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        query.edit_message_text(text=text)
+        query.edit_message_reply_markup(reply_markup=reply_markup)
 
-    keyboard.append([InlineKeyboardButton("<<Назад",
-                                          callback_data=f'admin_approved_replies')])
+    def view_reply(self, update, context):
+        query: telegram.CallbackQuery = update.callback_query
+        query.answer()
+        return_way = query.data.split("/")[0]
+        chat_id, reply_ind = tuple(map(int, query.data.split("/")[1:3]))
+        keyboard = []
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    query.edit_message_text(text=text)
-    query.edit_message_reply_markup(reply_markup=reply_markup)
+        offer_reply = self.bd.get_reply(OfferReply.Address(chat_id, reply_ind))
 
+        if offer_reply is None:
+            text = "Неверный адрес"
+        else:
+            text = ""
+            if offer_reply.is_removed():
+                text = "Заявка была удалена\n"
+            else:
+                keyboard.append([InlineKeyboardButton("Удалить",
+                                                      callback_data=f'{return_way}/{chat_id}/{reply_ind}/remove')])
 
-def admin_rejected_replies(update, context):
-    query: telegram.CallbackQuery = update.callback_query
-    query.answer()
+            if offer_reply.is_cancelled():
+                text = "Заявка была отменена пользователем\n"
+            text += offer_reply.get_reply(admin=True)
 
-    keyboard = []
+        keyboard.append([InlineKeyboardButton("<<Назад",
+                                              callback_data=f'{return_way}')])
 
-    replies = bd.get_rejected_replies()
-    if len(replies) != 0:
-        for ind, or_address in enumerate(replies):
-            offer_reply = bd.get_reply(or_address)
-            if offer_reply.is_deleted():
-                continue
-            keyboard.append([InlineKeyboardButton(offer_reply.admin_description(),
-                                                  callback_data=f'admin_rejected_replies/{or_address.chat_id}/{or_address.user_reply_ind}/view')])
-        text = "Отклонённые заявки"
-    else:
-        text = "Список пуст"
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        query.edit_message_text(text=text)
+        query.edit_message_reply_markup(reply_markup=reply_markup)
 
-    keyboard.append([InlineKeyboardButton("Обновить список",
-                                          callback_data=f'admin_rejected_replies')])
-    keyboard.append([InlineKeyboardButton("<<Назад",
-                                          callback_data=f'admin_menu')])
+    def view_approved_reply(self, update, context):
+        query: telegram.CallbackQuery = update.callback_query
+        query.answer()
+        chat_id, reply_ind = tuple(map(int, query.data.split("/")[1:3]))
+        keyboard = []
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    query.edit_message_text(text=text)
-    query.edit_message_reply_markup(reply_markup=reply_markup)
+        offer_reply = self.bd.get_reply(OfferReply.Address(chat_id, reply_ind))
 
+        if offer_reply is None:
+            text = "Неверный адрес"
+        else:
+            text = ""
+            if offer_reply.is_cancelled():
+                text = "Заявка была отменена пользователем\n"
+            elif offer_reply.is_removed():
+                text = "Заявка была удалена\n"
+            else:
+                keyboard.append([InlineKeyboardButton("Удалить",
+                                                      callback_data=f'admin_approved_replies/{chat_id}/{reply_ind}/remove')])
+            text += offer_reply.get_reply(admin=True)
 
-def admin_view_rejected_reply(update, context):
-    query: telegram.CallbackQuery = update.callback_query
-    query.answer()
-    chat_id, reply_ind = tuple(map(int, query.data.split("/")[1:3]))
-    keyboard = []
+        keyboard.append([InlineKeyboardButton("<<Назад",
+                                              callback_data=f'admin_approved_replies')])
 
-    offer_reply = bd.get_reply(OfferReply.Address(chat_id, reply_ind))
-    if offer_reply.is_deleted():
-        text = "Заявка была удалена пользователем"
-    else:
-        text = offer_reply.get_reply(admin=True)
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        query.edit_message_text(text=text)
+        query.edit_message_reply_markup(reply_markup=reply_markup)
 
-    keyboard.append([InlineKeyboardButton("<<Назад",
-                                          callback_data=f'admin_rejected_replies')])
+    def rejected_replies(self, update, context):
+        query: telegram.CallbackQuery = update.callback_query
+        query.answer()
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    query.edit_message_text(text=text)
-    query.edit_message_reply_markup(reply_markup=reply_markup)
+        keyboard = []
+
+        replies = self.bd.get_rejected_replies()
+        if len(replies) != 0:
+            for ind, or_address in enumerate(replies):
+                offer_reply = self.bd.get_reply(or_address)
+                if offer_reply.is_removed():
+                    continue
+                keyboard.append([InlineKeyboardButton(offer_reply.admin_description(),
+                                                      callback_data=f'admin_rejected_replies/{or_address.chat_id}/{or_address.user_reply_ind}/view')])
+            text = "Отклонённые заявки"
+        else:
+            text = "Список пуст"
+
+        keyboard.append([InlineKeyboardButton("Обновить список",
+                                              callback_data=f'admin_rejected_replies')])
+        keyboard.append([InlineKeyboardButton("<<Назад",
+                                              callback_data=f'admin_menu')])
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        query.edit_message_text(text=text)
+        query.edit_message_reply_markup(reply_markup=reply_markup)
+
+    def view_rejected_reply(self, update, context):
+        query: telegram.CallbackQuery = update.callback_query
+        query.answer()
+        chat_id, reply_ind = tuple(map(int, query.data.split("/")[1:3]))
+        keyboard = []
+
+        offer_reply = self.bd.get_reply(OfferReply.Address(chat_id, reply_ind))
+
+        if offer_reply is None:
+            text = "Неверный адрес"
+        else:
+            text = ""
+            if offer_reply.is_cancelled():
+                text = "Заявка была отменена пользователем\n"
+            elif offer_reply.is_removed():
+                text = "Заявка была удалена\n"
+            else:
+                keyboard.append([InlineKeyboardButton("Удалить",
+                                                  callback_data=f'admin_rejected_replies/{chat_id}/{reply_ind}/remove')])
+            text += offer_reply.get_reply(admin=True)
+
+        keyboard.append([InlineKeyboardButton("<<Назад",
+                                              callback_data=f'admin_rejected_replies')])
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        query.edit_message_text(text=text)
+        query.edit_message_reply_markup(reply_markup=reply_markup)
+
+    def cancelled_replies(self, update, context):
+        query: telegram.CallbackQuery = update.callback_query
+        query.answer()
+
+        keyboard = []
+
+        replies = self.bd.get_cancelled_replies()
+        if len(replies) != 0:
+            for ind, or_address in enumerate(replies):
+                offer_reply = self.bd.get_reply(or_address)
+                if offer_reply.is_removed():
+                    continue
+                keyboard.append([InlineKeyboardButton(offer_reply.admin_description(),
+                                                      callback_data=f'admin_cancelled_replies/{or_address.chat_id}/{or_address.user_reply_ind}/view')])
+            text = "Отменённые заявки"
+        else:
+            text = "Список пуст"
+
+        keyboard.append([InlineKeyboardButton("Обновить список",
+                                              callback_data=f'admin_cancelled_replies')])
+        keyboard.append([InlineKeyboardButton("<<Назад",
+                                              callback_data=f'admin_menu')])
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        query.edit_message_text(text=text)
+        query.edit_message_reply_markup(reply_markup=reply_markup)
+
+    def view_cancelled_reply(self, update, context):
+        query: telegram.CallbackQuery = update.callback_query
+        query.answer()
+        chat_id, reply_ind = tuple(map(int, query.data.split("/")[1:3]))
+        keyboard = []
+
+        offer_reply = self.bd.get_reply(OfferReply.Address(chat_id, reply_ind))
+
+        if offer_reply is None:
+            text = "Неверный адрес"
+        else:
+            text = ""
+            if offer_reply.is_cancelled():
+                keyboard.append([InlineKeyboardButton("Удалить",
+                                                      callback_data=f'admin_cancelled_replies/{chat_id}/{reply_ind}/remove')])
+            elif offer_reply.is_removed():
+                text = "Заявка была удалена\n"
+            text += offer_reply.get_reply(admin=True)
+
+        keyboard.append([InlineKeyboardButton("<<Назад",
+                                              callback_data=f'admin_cancelled_replies')])
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        query.edit_message_text(text=text)
+        query.edit_message_reply_markup(reply_markup=reply_markup)
+
+    def remove_reply(self, update, context):
+        query: telegram.CallbackQuery = update.callback_query
+        query.answer()
+        return_way = query.data.split("/")[0]
+        chat_id, reply_ind = tuple(map(int, query.data.split("/")[1:3]))
+        keyboard = []
+        offer_reply: OfferReply = self.bd.get_reply(OfferReply.Address(chat_id, reply_ind))
+
+        if offer_reply is None:
+            text = "Неверный адрес"
+        else:
+            offer_reply.remove()
+            self.bd.write_reply(offer_reply)
+            self.bd.flush()
+            text = "Заявка была удалена\n"
+            text += offer_reply.get_reply(admin=True)
+
+        keyboard.append([InlineKeyboardButton("<<Назад",
+                                              callback_data=return_way)])
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        query.edit_message_text(text=text)
+        query.edit_message_reply_markup(reply_markup=reply_markup)
